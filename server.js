@@ -48,8 +48,7 @@ io.on('connection', (socket) => {
       const result = await pool.query('SELECT * FROM users WHERE user_email = $1', [user_email]);
       if (result.rows.length > 0) {
         socket.emit('account_found', result.rows[0]);
-      } 
-      else {
+      } else {
         socket.emit('account_not_found', { message: 'Account not found. Please create a key pair and send the public key.' });
       }
     } catch (err) {
@@ -68,10 +67,29 @@ io.on('connection', (socket) => {
       if (clientId) {
         io.to(clientId).emit('welcome', { message: 'Your account has been created and you are now connected!' });
       }
-    } 
-    catch (err) {
+    } catch (err) {
       console.error(err);
       socket.emit('error', { message: 'Internal server error' });
+    }
+  });
+
+  socket.on('email_sent', async (data) => {
+    const { recipient, sender } = data;
+    const clientId = clients[recipient];
+    if (clientId) {
+      try {
+        const result = await pool.query('SELECT user_email FROM users WHERE user_email = $1', [recipient]);
+        if (result.rows.length > 0) {
+          io.to(clientId).emit('email_notification', { sender });
+          console.log(`Email notification sent to ${recipient} (socket id: ${clientId}) from ${sender}`);
+        } else {
+          console.log(`Recipient ${recipient} not found in the database`);
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    } else {
+      console.log(`No active session found for ${recipient}`);
     }
   });
 
@@ -84,6 +102,16 @@ io.on('connection', (socket) => {
       }
     }
   });
+});
+
+app.get('/api/addresses', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT user_email, public_key FROM users');
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 server.listen(port, () => {
